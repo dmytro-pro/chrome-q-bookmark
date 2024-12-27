@@ -107,10 +107,10 @@ function addNoFire(title) {
 // Add ONE 🔥 emoji
 function addOneFire(title) {
     const match = title.match(/^(🔥+)?(.*)/); // Match fires and text
-    const fires = match[1] ? match[1].length + 1 : 1; // Add exactly one fire
+    const fires = match[1] ? match[1].length : 1; // Count existing fires
     const rest = match[2] ? match[2].trim() : ""; // Extract the rest
 
-    return "🔥".repeat(1) + rest; // Add exactly ONE 🔥
+    return "🔥".repeat(fires) + (rest ? " " + rest : ""); // Add exactly ONE 🔥
 }
 
 // Remove ONE 🔥 emoji
