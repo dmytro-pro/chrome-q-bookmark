@@ -1,112 +1,122 @@
-let isProcessing = false; // Prevent double execution
+let lastCommandTime = 0; // Debounce timing
 
-chrome.commands.onCommand.addListener(async (command) => {
-    if (isProcessing) return; // Block double execution
-    isProcessing = true; // Lock execution
+chrome.commands.onCommand.addListener((command) => {
+    const now = Date.now();
 
-    try {
-        if (command === "prepend-emoji") {
-            await handleBookmark(addFire, "fire"); // Add 🔥
-        } else if (command === "remove-emoji") {
-            await handleBookmark(removeFire, "ice", true); // Remove 🔥
-        }
-    } finally {
-        isProcessing = false; // Unlock
+    // Debounce to prevent double execution
+    if (now - lastCommandTime < 300) return;
+    lastCommandTime = now;
+
+    if (command === "prepend-emoji") {
+        handleBookmark(addOneFire, "fire"); // Add one 🔥
+    } else if (command === "remove-emoji") {
+        handleBookmark(removeOneFire, "ice", true); // Remove one 🔥 or warn
     }
 });
 
-// Find or create [q] folder
-async function getOrCreateFolder() {
-    const folders = await chrome.bookmarks.search({ title: "[q]" });
-    for (const folder of folders) {
-        if (folder.parentId === "1") return folder; // Found in Bookmarks Bar (ID 1)
-    }
-    // Create folder in Bookmarks Bar if not found
-    return await chrome.bookmarks.create({
-        parentId: "1",
-        title: "[q]"
+// Process bookmark updates
+function handleBookmark(transformTitle, effect, warnIfNone = false) {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        const tab = tabs[0];
+        if (tab) {
+            // First, check if [q] folder exists in bookmarks bar
+            chrome.bookmarks.search({ title: "[q]" }, (results) => {
+                const bookmarksBar = "1"; // Chrome's bookmark bar ID
+                let qFolder = results.find(b => b.parentId === bookmarksBar);
+
+                const processBookmark = (qFolderId) => {
+                    // Search for bookmark in [q] folder
+                    chrome.bookmarks.search({ url: tab.url }, (results) => {
+                        const bookmark = results.find(b => b.parentId === qFolderId);
+
+                        if (bookmark) {
+                            const originalTitle = bookmark.title.trim();
+                            const newTitle = transformTitle(originalTitle);
+                            const fires = (newTitle.match(/🔥/g) || []).length;
+
+                            if (newTitle === originalTitle && warnIfNone) {
+                                sendEffectToTab("warning", fires);
+                            } else if (fires === 0) {
+                                // Remove bookmark if no fires left
+                                chrome.bookmarks.remove(bookmark.id, () => {
+                                    sendEffectToTab(effect, 0);
+                                });
+                            } else {
+                                // Update bookmark title
+                                chrome.bookmarks.update(bookmark.id, { title: newTitle }, () => {
+                                    setTimeout(() => {
+                                        chrome.bookmarks.get(bookmark.id, (updated) => {
+                                            const updatedCount = (updated[0].title.match(/🔥/g) || []).length;
+                                            sendEffectToTab(effect, updatedCount);
+                                        });
+                                    }, 100);
+                                });
+                            }
+                        } else if (effect === "fire") {
+                            // Create new bookmark in [q] folder
+                            const newTitle = transformTitle(tab.title);
+                            chrome.bookmarks.create({
+                                parentId: qFolderId,
+                                title: newTitle,
+                                url: tab.url
+                            }, () => {
+                                const fireCount = (newTitle.match(/🔥/g) || []).length;
+                                sendEffectToTab(effect, fireCount);
+                            });
+                        } else {
+                            sendEffectToTab("warning");
+                        }
+                    });
+                };
+
+                if (qFolder) {
+                    processBookmark(qFolder.id);
+                } else {
+                    // Create [q] folder if it doesn't exist
+                    chrome.bookmarks.create({
+                        parentId: bookmarksBar,
+                        title: "[q]"
+                    }, (newFolder) => {
+                        processBookmark(newFolder.id);
+                    });
+                }
+            });
+        }
     });
 }
 
-// Handle bookmarks in [q] folder
-async function handleBookmark(modifyFn, effect, warnIfNone = false) {
-    const folder = await getOrCreateFolder(); // Ensure [q] exists
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab) {
-        showEffect("warning");
-        return;
-    }
+// Add ONE 🔥 emoji
+function addOneFire(title) {
+    const match = title.match(/^(🔥+)?(.*)/); // Match fires and text
+    const fires = match[1] ? match[1].length : 1; // Count existing fires, or add one!
+    const rest = match[2] ? match[2].trim() : ""; // Extract the rest
 
-    // Find bookmark in the [q] folder
-    const bookmarks = await chrome.bookmarks.search({ url: tab.url });
-    let bookmark = bookmarks.find(b => b.parentId === folder.id);
-
-    if (!bookmark && effect === "ice") {
-        showEffect("warning"); // Can't remove if it doesn't exist
-        return;
-    }
-
-    if (!bookmark && effect === "fire") {
-        // Add bookmark if not found
-        bookmark = await chrome.bookmarks.create({
-            parentId: folder.id,
-            title: tab.title, // Start with original title
-            url: tab.url
-        });
-    }
-
-    const originalTitle = bookmark.title || "";
-    const newTitle = modifyFn(originalTitle);
-
-    // Update or delete based on count
-    const fireCount = (newTitle.match(/🔥/g) || []).length;
-    if (fireCount > 0) {
-        await chrome.bookmarks.update(bookmark.id, { title: newTitle }); // Update title
-        showEffect(effect, fireCount);
-    } else {
-        await chrome.bookmarks.remove(bookmark.id); // Remove bookmark if no 🔥
-        showEffect("ice", 0); // Show ❄️ effect
-    }
+    return "🔥".repeat(fires) + rest; // Add exactly ONE 🔥
 }
 
-// Add one 🔥
-function addFire(title) {
-    const match = title.match(/^(🔥*)(.*)$/) || ["", "", ""];
-    const fires = match[1]; // Current fires
-    const rest = match[2]; // Original title
-    return "🔥".repeat(fires.length + 1) + rest; // Add 1 fire
-}
+// Remove ONE 🔥 emoji
+function removeOneFire(title) {
+    const match = title.match(/^(🔥+)?(.*)/); // Match fires and text
+    const fires = match[1] ? match[1].length : 0; // Count existing fires
+    const rest = match[2] ? match[2].trim() : ""; // Extract the rest
 
-// Remove one 🔥
-function removeFire(title) {
-    const match = title.match(/^(🔥*)(.*)$/) || ["", "", ""];
-    const fires = match[1]; // Current fires
-    const rest = match[2]; // Original title
-
-    if (fires.length > 1) {
-        return "🔥".repeat(fires.length - 1) + rest; // Remove 1 fire
+    if (fires > 1) {
+        return "🔥".repeat(fires-1) + rest; // Remove ONE 🔥
     }
-    return rest; // Remove all fires
+    return rest; // No fires left—return plain title
 }
 
-// Show effects (fire, ice, or warning)
-function showEffect(effect, count = "") {
+// Send visual effect
+function sendEffectToTab(effect, count = "") {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         const tab = tabs[0];
         if (tab) {
             chrome.scripting.executeScript({
                 target: { tabId: tab.id },
                 func: (effect, count) => {
-                    document.querySelectorAll(".bookmark-effect").forEach(e => e.remove());
-
-                    const div = document.createElement("div");
-                    div.classList.add("bookmark-effect");
-                    div.textContent = effect === "fire" ? `🔥${count}` :
-                        effect === "ice" ? (count > 0 ? `🔥${count}` : "❄️") :
-                            "⚠️";
-                    document.body.appendChild(div);
-
-                    setTimeout(() => div.remove(), 300); // Clear effect
+                    document.body.dispatchEvent(
+                        new CustomEvent("bookmarkEffect", { detail: { effect, count } })
+                    );
                 },
                 args: [effect, count]
             });
