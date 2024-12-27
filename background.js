@@ -1,4 +1,5 @@
 let lastCommandTime = 0; // Debounce timing
+let lastUpdateTime = 0; // Debounce for bookmark updates
 
 chrome.commands.onCommand.addListener((command) => {
     const now = Date.now();
@@ -28,7 +29,6 @@ function handleBookmark(transformTitle, effect, warnIfNone = false) {
                     // Search for bookmark in [q] folder
                     chrome.bookmarks.search({ url: tab.url }, (results) => {
                         const bookmark = results.find(b => b.parentId === qFolderId);
-
                         if (bookmark) {
                             const originalTitle = bookmark.title.trim();
                             const newTitle = transformTitle(originalTitle);
@@ -37,10 +37,12 @@ function handleBookmark(transformTitle, effect, warnIfNone = false) {
                             const originalMatch = originalTitle.match(/^(🔥+)?(.*)/);
                             const originalFires = originalMatch && originalMatch[1] ? originalMatch[1].length : 0;
 
-                            const fireCount = (newTitle.match(/^(🔥+)?(.*)/) || []).length;
-
                             if (effect === "ice" && originalFires <= 1) {
                                 // Remove bookmark if this was the last fire
+                                const now = Date.now();
+                                if (now - lastUpdateTime < 300) return;
+                                lastUpdateTime = now;
+
                                 chrome.bookmarks.remove(bookmark.id, () => {
                                     sendEffectToTab(effect, 0);
                                 });
@@ -50,19 +52,22 @@ function handleBookmark(transformTitle, effect, warnIfNone = false) {
                             if (newTitle === originalTitle && warnIfNone) {
                                 sendEffectToTab("warning", originalFires);
                             } else {
-                                // Update bookmark title
+                                // Update bookmark title with debounce
+                                const now = Date.now();
+                                if (now - lastUpdateTime < 300) return;
+                                lastUpdateTime = now;
+
                                 chrome.bookmarks.update(bookmark.id, { title: newTitle }, () => {
-                                    // Fetch the updated title after 100ms for consistency
-                                    setTimeout(() => {
-                                            chrome.bookmarks.get(bookmark.id, (updated) => {
-                                            const updatedCount = (updated[0].title.match(/🔥/g) || []).length;
-                                            sendEffectToTab(effect, updatedCount); // Visual feedback
-                                        });
-                                    }, 100); // Allow time for Chrome to sync
+                                    const updatedCount = (newTitle.match(/🔥/g) || []).length;
+                                    sendEffectToTab(effect, updatedCount);
                                 });
                             }
                         } else if (effect === "fire") {
                             // Create new bookmark in [q] folder
+                            const now = Date.now();
+                            if (now - lastUpdateTime < 300) return;
+                            lastUpdateTime = now;
+
                             const newTitle = addNoFire(tab.title);
                             chrome.bookmarks.create({
                                 parentId: qFolderId,
@@ -102,10 +107,10 @@ function addNoFire(title) {
 // Add ONE 🔥 emoji
 function addOneFire(title) {
     const match = title.match(/^(🔥+)?(.*)/); // Match fires and text
-    const fires = match[1] ? match[1].length : 0; // Count existing fires
+    const fires = match[1] ? match[1].length + 1 : 1; // Add exactly one fire
     const rest = match[2] ? match[2].trim() : ""; // Extract the rest
 
-    return "🔥".repeat(fires + 1) + (rest ? " " + rest : ""); // Add exactly ONE 🔥
+    return "🔥".repeat(1) + rest; // Add exactly ONE 🔥
 }
 
 // Remove ONE 🔥 emoji
