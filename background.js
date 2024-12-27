@@ -102,8 +102,10 @@ function removeOneFire(title) {
     const fires = match[1] ? match[1].length : 0; // Count existing fires
     const rest = match[2] ? match[2].trim() : ""; // Extract the rest
 
-    // Return only remaining fires (if any) plus the rest of the title
-    return fires > 1 ? "🔥".repeat(fires - 1) + (rest ? " " + rest : "") : rest;
+    if (fires > 1) {
+        return "🔥".repeat(fires-2) + rest; // Remove ONE 🔥
+    }
+    return rest; // No fires left—return plain title
 }
 
 // Send visual effect
