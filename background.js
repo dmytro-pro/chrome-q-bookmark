@@ -1,3 +1,4 @@
+const namespace = 'q ';
 let lastCommandTime = 0; // Debounce timing
 let lastUpdateTime = 0; // Debounce for bookmark updates
 
@@ -134,7 +135,7 @@ function sendEffectToTab(effect, count = "") {
                 target: { tabId: tab.id },
                 func: (effect, count) => {
                     document.body.dispatchEvent(
-                        new CustomEvent("bookmarkEffect", { detail: { effect, count } })
+                        new CustomEvent(`bookmarkEffect-${namespace}`, { detail: { effect, count } })
                     );
                 },
                 args: [effect, count]
