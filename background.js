@@ -32,24 +32,26 @@ function handleBookmark(transformTitle, effect, warnIfNone = false) {
                         if (bookmark) {
                             const originalTitle = bookmark.title.trim();
                             const newTitle = transformTitle(originalTitle);
-                            const fires = (newTitle.match(/🔥/g) || []).length;
 
-                            if (newTitle === originalTitle && warnIfNone) {
-                                sendEffectToTab("warning", fires);
-                            } else if (fires === 0) {
-                                // Remove bookmark if no fires left
+                            // Check if there are any fire emojis in the original title
+                            const originalMatch = originalTitle.match(/^(🔥+)?(.*)/);
+                            const originalFires = originalMatch && originalMatch[1] ? originalMatch[1].length : 0;
+
+                            if (effect === "ice" && originalFires <= 1) {
+                                // Remove bookmark if this was the last fire
                                 chrome.bookmarks.remove(bookmark.id, () => {
                                     sendEffectToTab(effect, 0);
                                 });
+                                return;
+                            }
+
+                            if (newTitle === originalTitle && warnIfNone) {
+                                sendEffectToTab("warning", originalFires);
                             } else {
                                 // Update bookmark title
                                 chrome.bookmarks.update(bookmark.id, { title: newTitle }, () => {
-                                    setTimeout(() => {
-                                        chrome.bookmarks.get(bookmark.id, (updated) => {
-                                            const updatedCount = (updated[0].title.match(/🔥/g) || []).length;
-                                            sendEffectToTab(effect, updatedCount);
-                                        });
-                                    }, 100);
+                                    const updatedFireCount = (newTitle.match(/🔥/g) || []).length;
+                                    sendEffectToTab(effect, updatedFireCount);
                                 });
                             }
                         } else if (effect === "fire") {
@@ -59,8 +61,8 @@ function handleBookmark(transformTitle, effect, warnIfNone = false) {
                                 parentId: qFolderId,
                                 title: newTitle,
                                 url: tab.url
-                            }, () => {
-                                const fireCount = (newTitle.match(/🔥/g) || []).length;
+                            }, (newBookmark) => {
+                                const fireCount = (newBookmark.title.match(/🔥/g) || []).length;
                                 sendEffectToTab(effect, fireCount);
                             });
                         } else {
@@ -88,10 +90,10 @@ function handleBookmark(transformTitle, effect, warnIfNone = false) {
 // Add ONE 🔥 emoji
 function addOneFire(title) {
     const match = title.match(/^(🔥+)?(.*)/); // Match fires and text
-    const fires = match[1] ? match[1].length : 1; // Count existing fires, or add one!
+    const fires = match[1] ? match[1].length : 0; // Count existing fires
     const rest = match[2] ? match[2].trim() : ""; // Extract the rest
 
-    return "🔥".repeat(fires) + rest; // Add exactly ONE 🔥
+    return "🔥".repeat(fires + 1) + (rest ? " " + rest : ""); // Add exactly ONE 🔥
 }
 
 // Remove ONE 🔥 emoji
@@ -100,10 +102,8 @@ function removeOneFire(title) {
     const fires = match[1] ? match[1].length : 0; // Count existing fires
     const rest = match[2] ? match[2].trim() : ""; // Extract the rest
 
-    if (fires > 1) {
-        return "🔥".repeat(fires-1) + rest; // Remove ONE 🔥
-    }
-    return rest; // No fires left—return plain title
+    // Return only remaining fires (if any) plus the rest of the title
+    return fires > 1 ? "🔥".repeat(fires - 1) + (rest ? " " + rest : "") : rest;
 }
 
 // Send visual effect
