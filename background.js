@@ -37,6 +37,8 @@ function handleBookmark(transformTitle, effect, warnIfNone = false) {
                             const originalMatch = originalTitle.match(/^(🔥+)?(.*)/);
                             const originalFires = originalMatch && originalMatch[1] ? originalMatch[1].length : 0;
 
+                            const fireCount = (newTitle.match(/^(🔥+)?(.*)/) || []).length;
+
                             if (effect === "ice" && originalFires <= 1) {
                                 // Remove bookmark if this was the last fire
                                 chrome.bookmarks.remove(bookmark.id, () => {
@@ -50,13 +52,18 @@ function handleBookmark(transformTitle, effect, warnIfNone = false) {
                             } else {
                                 // Update bookmark title
                                 chrome.bookmarks.update(bookmark.id, { title: newTitle }, () => {
-                                    const updatedFireCount = (newTitle.match(/🔥/g) || []).length;
-                                    sendEffectToTab(effect, updatedFireCount);
+                                    // Fetch the updated title after 100ms for consistency
+                                    setTimeout(() => {
+                                            chrome.bookmarks.get(bookmark.id, (updated) => {
+                                            const updatedCount = (updated[0].title.match(/🔥/g) || []).length;
+                                            sendEffectToTab(effect, updatedCount); // Visual feedback
+                                        });
+                                    }, 100); // Allow time for Chrome to sync
                                 });
                             }
                         } else if (effect === "fire") {
                             // Create new bookmark in [q] folder
-                            const newTitle = transformTitle(tab.title);
+                            const newTitle = addNoFire(tab.title);
                             chrome.bookmarks.create({
                                 parentId: qFolderId,
                                 title: newTitle,
@@ -85,6 +92,11 @@ function handleBookmark(transformTitle, effect, warnIfNone = false) {
             });
         }
     });
+}
+
+// no fire for the first time
+function addNoFire(title) {
+    return title;
 }
 
 // Add ONE 🔥 emoji
