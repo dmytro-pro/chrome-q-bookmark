@@ -58,13 +58,17 @@ function handleBookmark(transformTitle, effect, warnIfNone = false) {
                                 if (now - lastUpdateTime < 300) return;
                                 lastUpdateTime = now;
 
-                                chrome.bookmarks.update(bookmark.id, { title: newTitle }, () => {
-                                    const updatedCount = (newTitle.match(/🔥/g) || []).length;
-                                    sendEffectToTab(effect, updatedCount);
+                                // First move the bookmark to the top
+                                chrome.bookmarks.move(bookmark.id, { index: 0 }, () => {
+                                    // Then update its title
+                                    chrome.bookmarks.update(bookmark.id, { title: newTitle }, () => {
+                                        const updatedCount = (newTitle.match(/🔥/g) || []).length;
+                                        sendEffectToTab(effect, updatedCount);
+                                    });
                                 });
                             }
                         } else if (effect === "fire") {
-                            // Create new bookmark in [q] folder
+                            // Create new bookmark in [q] folder at index 0 (top)
                             const now = Date.now();
                             if (now - lastUpdateTime < 300) return;
                             lastUpdateTime = now;
@@ -73,7 +77,8 @@ function handleBookmark(transformTitle, effect, warnIfNone = false) {
                             chrome.bookmarks.create({
                                 parentId: qFolderId,
                                 title: newTitle,
-                                url: tab.url
+                                url: tab.url,
+                                index: 0  // Add at the top of the folder
                             }, (newBookmark) => {
                                 const fireCount = (newBookmark.title.match(/🔥/g) || []).length;
                                 sendEffectToTab(effect, fireCount);
