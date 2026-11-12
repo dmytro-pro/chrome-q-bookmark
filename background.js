@@ -22,9 +22,8 @@ function handleBookmark(transformTitle, effect, warnIfNone = false) {
         const tab = tabs[0];
         if (tab) {
             // First, check if [q] folder exists in bookmarks bar
-            chrome.bookmarks.search({ title: "[q]" }, (results) => {
-                const bookmarksBar = "1"; // Chrome's bookmark bar ID
-                let qFolder = results.find(b => b.parentId === bookmarksBar);
+            getBookmarksBarId((bookmarksBar) => chrome.bookmarks.search({ title: "[q]" }, (results) => {
+                let qFolder = results.find(b => !b.url && b.parentId === bookmarksBar);
 
                 const processBookmark = (qFolderId) => {
                     // Search for bookmark in [q] folder
@@ -100,8 +99,19 @@ function handleBookmark(transformTitle, effect, warnIfNone = false) {
                         processBookmark(newFolder.id);
                     });
                 }
-            });
+            }));
         }
+    });
+}
+
+// The bookmarks bar ID is not always "1": when bookmarks are stored in the
+// Google account (Chrome 134+), the account bookmarks bar gets a different ID
+// and "1" is the (usually empty and hidden) local bar.
+function getBookmarksBarId(callback) {
+    chrome.bookmarks.getChildren("0", (roots) => {
+        const bars = roots.filter(n => n.folderType === "bookmarks-bar");
+        const bar = bars.find(n => n.syncing) || bars[0];
+        callback(bar ? bar.id : "1"); // "1" — fallback for older Chrome versions
     });
 }
 
