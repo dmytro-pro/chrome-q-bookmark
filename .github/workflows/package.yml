@@ -36,7 +36,7 @@ jobs:
         run: |
           mkdir -p dist
           ZIP="dist/chrome-q-bookmark-v${{ steps.meta.outputs.version }}.zip"
-          zip -X "$ZIP" manifest.json background.js content.js styles.css LICENSE
+          zip -X "$ZIP" manifest.json background.js content.js styles.css LICENSE icons/*.png
           unzip -l "$ZIP"
 
       - uses: actions/upload-artifact@v4
